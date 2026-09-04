@@ -1,11 +1,16 @@
 {
   "name": "hubspot-portal-sync-assessment",
   "version": "1.0.0",
-  "description": "HubSpot portal-to-portal custom object sync assessment",
+  "description": "Idempotent HubSpot portal-to-portal custom object sync service",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
   "main": "src/handlers/serverlessHandler.js",
   "scripts": {
-    "test:local": "node scripts/localTest.js"
+    "test": "node --test tests/*.test.js",
+    "example": "node scripts/example.js",
+    "lint": "eslint src tests scripts"
   },
   "dependencies": {
     "dotenv": "^16.4.5"
