@@ -1,0 +1,50 @@
+flowchart TD
+    subgraph Triggers["Entry points"]
+        Serverless["HubSpot Serverless Function\nsrc/handlers/serverlessHandler.js"]
+        Workflow["HubSpot Workflow Custom Code Action\nsrc/handlers/workflowCodeActionHandler.js"]
+    end
+
+    Serverless --> Sync
+    Workflow --> Sync
+
+    Sync["Sync Service\nsrc/services/syncService.js\nsyncImplementationTicket()"]
+
+    Sync -- "1. best-effort: mark Pending" --> SourceWrite1[("Source portal\nPATCH sync_status")]
+    Sync -- "2. read record" --> Retry1{{"withRetry\n429 / 5xx"}}
+    Retry1 --> SourceRead[("Source portal\nGET ticket")]
+    SourceRead --> Mapper["Mapper\nsrc/services/mapper.js\nmapSourceToTargetProps()"]
+
+    Mapper -- "external_id missing" --> Fail
+    Mapper -- "mapped props" --> Search
+
+    Search["3. search by external_id"] --> Retry2{{"withRetry\n429 / 5xx"}}
+    Retry2 --> TargetSearch[("Target portal\nPOST search")]
+
+    TargetSearch -- "> 1 match" --> Fail["Duplicate error"]
+    TargetSearch -- "record archived in source" --> Archive
+    TargetSearch -- "not archived, 0 matches" --> Create
+    TargetSearch -- "not archived, 1 match" --> Update
+
+    Archive["archive (0 or 1 match)"] --> Retry3{{"withRetry\n429 / 5xx"}}
+    Create["create"] --> Retry3
+    Update["update"] --> Retry3
+    Retry3 --> TargetWrite[("Target portal\nPOST / PATCH / DELETE")]
+
+    TargetWrite -- "success" --> SourceWrite2[("Source portal\nPATCH sync_status=Synced\n+ last_sync_at")]
+    Fail -- "any thrown error" --> SourceWrite3[("Source portal\nbest-effort PATCH\nsync_status=Failed\n+ truncated last_sync_error")]
+
+    Client["HubSpot Client\nsrc/hubspot/client.js — hsFetch()\nBearer auth, JSON, throws HubSpotApiError"]
+    SourceRead -.-> Client
+    SourceWrite1 -.-> Client
+    SourceWrite2 -.-> Client
+    SourceWrite3 -.-> Client
+    TargetSearch -.-> Client
+    TargetWrite -.-> Client
+    Client -.-> API[("HubSpot CRM API\napi.hubapi.com")]
+
+    classDef retry fill:#fff3cd,stroke:#997404,color:#664d03
+    classDef store fill:#e7f1ff,stroke:#0a58ca,color:#0a3a86
+    classDef fail fill:#f8d7da,stroke:#b02a37,color:#842029
+    class Retry1,Retry2,Retry3 retry
+    class SourceRead,SourceWrite1,SourceWrite2,SourceWrite3,TargetSearch,TargetWrite,API store
+    class Fail fail
